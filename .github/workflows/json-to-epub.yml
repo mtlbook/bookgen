@@ -1,0 +1,92 @@
+name: JSON → EPUB
+
+on:
+  workflow_dispatch:
+    inputs:
+      json_url:
+        description: "URL of the JSON file (array of {title, content})"
+        required: true
+        type: string
+      cover_url:
+        description: "URL of the cover image"
+        required: true
+        type: string
+      output_filename:
+        description: "Name of the .epub file (no extension)"
+        default: "book"
+        required: false
+        type: string
+      title:
+        description: "Book title (metadata)"
+        default: "My Book"
+        required: false
+        type: string
+      author:
+        description: "Book author (metadata)"
+        default: "Anonymous"
+        required: false
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Create package.json on the fly
+        run: |
+          echo '{"name":"tmp","type":"module","dependencies":{"epub-gen":"^0.1.0","axios":"^1.6.0"}}' > package.json
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Download cover image
+        run: curl -L -o cover.jpg "${{ github.event.inputs.cover_url }}"
+
+      - name: Build EPUB
+        run: |
+          mkdir -p epub
+          node <<'JS'
+          import axios from 'axios';
+          import Epub from 'epub-gen';
+          import fs from 'fs';
+
+          const jsonUrl    = process.env.JSON_URL;
+          const coverFile  = 'cover.jpg';
+          const outputFile = `epub/${process.env.OUTPUT_FILENAME}.epub`; // <-- epub folder
+          const bookTitle  = process.env.BOOK_TITLE;
+          const bookAuthor = process.env.BOOK_AUTHOR;
+
+          const { data: chapters } = await axios.get(jsonUrl);
+          const content = chapters.map(c => ({
+            title: c.title,
+            data:  c.content
+          }));
+
+          const options = {
+            title:  bookTitle,
+            author: bookAuthor,
+            cover:  coverFile,
+            content
+          };
+
+          await new Epub(options, outputFile).promise;
+          console.log(`✅ Created ${outputFile}`);
+          JS
+        env:
+          JSON_URL:        ${{ github.event.inputs.json_url }}
+          OUTPUT_FILENAME: ${{ github.event.inputs.output_filename }}
+          BOOK_TITLE:      ${{ github.event.inputs.title }}
+          BOOK_AUTHOR:     ${{ github.event.inputs.author }}
+
+      - name: Upload EPUB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.output_filename }}
+          path: epub/${{ github.event.inputs.output_filename }}.epub
