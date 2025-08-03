@@ -26,6 +26,11 @@ on:
         default: "Anonymous"
         required: false
         type: string
+      description:
+        description: "Book description (metadata)"
+        default: "Generated from JSON via GitHub Actions"
+        required: false
+        type: string
 
 jobs:
   build:
@@ -39,12 +44,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Create package.json on the fly
-        run: |
-          echo '{"name":"tmp","type":"module","dependencies":{"epub-gen":"^0.1.0","axios":"^1.6.0"}}' > package.json
-
-      - name: Install deps
-        run: npm ci
+      - name: Install dependencies
+        run: npm install epub-gen axios
 
       - name: Download cover image
         run: curl -L -o cover.jpg "${{ github.event.inputs.cover_url }}"
@@ -59,9 +60,10 @@ jobs:
 
           const jsonUrl    = process.env.JSON_URL;
           const coverFile  = 'cover.jpg';
-          const outputFile = `epub/${process.env.OUTPUT_FILENAME}.epub`; // <-- epub folder
+          const outputFile = `epub/${process.env.OUTPUT_FILENAME}.epub`;
           const bookTitle  = process.env.BOOK_TITLE;
           const bookAuthor = process.env.BOOK_AUTHOR;
+          const bookDesc   = process.env.BOOK_DESC;
 
           const { data: chapters } = await axios.get(jsonUrl);
           const content = chapters.map(c => ({
@@ -70,9 +72,10 @@ jobs:
           }));
 
           const options = {
-            title:  bookTitle,
-            author: bookAuthor,
-            cover:  coverFile,
+            title:       bookTitle,
+            author:      bookAuthor,
+            description: bookDesc,
+            cover:       coverFile,
             content
           };
 
@@ -84,6 +87,7 @@ jobs:
           OUTPUT_FILENAME: ${{ github.event.inputs.output_filename }}
           BOOK_TITLE:      ${{ github.event.inputs.title }}
           BOOK_AUTHOR:     ${{ github.event.inputs.author }}
+          BOOK_DESC:       ${{ github.event.inputs.description }}
 
       - name: Upload EPUB artifact
         uses: actions/upload-artifact@v4
