@@ -141,7 +141,7 @@ jobs:
             author: novelInfo.author,
             description: novelInfo.description,
             cover: 'cover.jpg',
-            coverPath: 'OEBPS/cover.jpg'
+            coverPath: 'OEBPS/cover.jpg',
             content
           };
 
