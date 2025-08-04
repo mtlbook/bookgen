@@ -73,9 +73,6 @@ jobs:
           const safeName   = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
           const outputFile = `results/${safeName}.epub`;
 
-
-
-
           const novelInfo = {
               title:       process.env.BOOK_TITLE,
               author:      process.env.BOOK_AUTHOR,
@@ -155,6 +152,7 @@ jobs:
         env:
           JSON_URL:        ${{ github.event.inputs.json_url }}
           OUTPUT_FILENAME: ${{ github.event.inputs.output_filename }}
+          BOOK_COVER_URL:  ${{ github.event.inputs.cover_url }}
           BOOK_TITLE:      ${{ github.event.inputs.title }}
           BOOK_AUTHOR:     ${{ github.event.inputs.author }}
           BOOK_DESC:       ${{ github.event.inputs.description }}
