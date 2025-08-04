@@ -98,6 +98,10 @@ OEBPS.file('content.opf', opf);
 // ---------- write file ----------
 const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
 await fs.promises.mkdir('results', { recursive: true });
-const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+const buffer = await zip.generateAsync({
+  type: 'nodebuffer',
+  compression: 'DEFLATE',
+  compressionOptions: { level: 9 }
+});
 await fs.promises.writeFile(`results/${safeName}.epub`, buffer);
 console.log(`✅ Created results/${safeName}.epub`);
