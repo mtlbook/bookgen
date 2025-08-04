@@ -135,6 +135,7 @@ jobs:
             title:  novelInfo.title,
             author: novelInfo.author,
             description: novelInfo.description,
+            css: "p{text-indent: 1em;};",
             cover:  novelInfo.cover,
             content
           };
