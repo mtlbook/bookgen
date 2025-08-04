@@ -10,6 +10,46 @@ import JSZip   from 'jszip';
 import fs      from 'fs';
 import path    from 'path';
 
+let chapters = [];
+try {
+  const response = await axios.get(process.env.JSON_URL);
+  chapters = response.data;
+  
+  if (!Array.isArray(chapters)) {
+    throw new Error('Fetched data is not an array');
+  }
+  
+  console.log(`Fetched ${chapters.length} chapters`);
+} catch (error) {
+  console.error('Error fetching chapters:', error.message);
+  process.exit(1);
+}
+
+// ---------- prepare content ----------
+const mapped = chapters.map((c, idx) => {
+  // Validate chapter structure
+  if (!c.title || !c.content) {
+    console.warn(`Chapter ${idx + 1} is missing title or content`);
+  }
+
+  let raw = c.content.replace(/\\n/g, '\n')
+                     .replace(/\n{2,}/g, '\n\n');
+  const paragraphs = raw
+    .split(/\n{2,}/)
+    .map(p => `<p>${xmlEscape(p.trim())}</p>`)
+    .join('\n');
+
+  const id   = `c${idx + 1}`;
+  const file = `${id}.xhtml`;
+  const body = `<h1>${xmlEscape(c.title)}</h1>\n${paragraphs}`;
+  return { 
+    title: c.title || `Chapter ${idx + 1}`, 
+    body, 
+    id, 
+    file 
+  };
+});
+
 // ---------- helpers ----------
 function html(title, body) {
   return `<?xml version="1.0" encoding="utf-8"?>
