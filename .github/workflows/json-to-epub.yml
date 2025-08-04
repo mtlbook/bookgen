@@ -57,111 +57,123 @@ jobs:
       - name: Install dependencies
         run: npm install epub-gen axios
 
-      - name: Download cover image
-        run: curl -L -o cover.jpg "${{ github.event.inputs.cover_url }}"
-
       - name: Build EPUB in results folder
         run: |
           mkdir -p results
           node <<'JS'
           import axios from 'axios';
           import Epub from 'epub-gen';
-          import fs   from 'fs';
+          import { Buffer } from 'buffer';
 
-          const jsonUrl    = process.env.JSON_URL;
-          const coverFile  = 'cover.jpg';
-          const safeName   = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
+          const jsonUrl = process.env.JSON_URL;
+          const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
           const outputFile = `results/${safeName}.epub`;
 
-          const novelInfo = {
-              title:       process.env.BOOK_TITLE,
-              author:      process.env.BOOK_AUTHOR,
-              description: process.env.BOOK_DESC,
-              status:      process.env.BOOK_STATUS || 'Unknown',
-              genres:      (process.env.BOOK_GENRES || '').split(',').map(g => g.trim()).filter(Boolean),
-              cover:       process.env.COVER_URL
+          // Download helper
+          const downloadImage = async (url) => {
+              const response = await axios.get(url, { responseType: 'arraybuffer' });
+              return {
+                  data: response.data,
+                  contentType: response.headers['content-type'],
+                  extension: response.headers['content-type'].split('/')[1]
+              };
           };
 
-              /* ---- helpers ---- */
-          
-           const getCoverXhtmlContent = () =>
-          `<?xml version="1.0" encoding="UTF-8"?>
-           <!DOCTYPE html>
-           <html xmlns="http://www.w3.org/1999/xhtml"
-             xmlns:epub="http://www.idpf.org/2007/ops"
-             lang="en" xml:lang="en">
-              <head>
-                <title>${novelInfo.title}</title>
-                  <link rel="stylesheet" type="text/css" href="css/epub.css" />
-              </head>
-              <body>
-               ${novelInfo.cover ? `<img src="${novelInfo.cover}" alt="Cover Image" style="height:auto;width:100%;" />` : ''}
-              <h1>${novelInfo.title}</h1>
-               <h2>by ${novelInfo.author}</h2>
-                </body>
-            </html>`;
-            
-          /* ---- fetch chapters ---- */
+          // Process inputs
+          const novelInfo = {
+              title: process.env.BOOK_TITLE,
+              author: process.env.BOOK_AUTHOR,
+              description: process.env.BOOK_DESC,
+              status: process.env.BOOK_STATUS || 'Unknown',
+              genres: (process.env.BOOK_GENRES || '').split(',').map(g => g.trim()).filter(Boolean)
+          };
+
+          // Download cover if exists
+          let coverImage = null;
+          if (process.env.COVER_URL) {
+              try {
+                  coverImage = await downloadImage(process.env.COVER_URL);
+              } catch (e) {
+                  console.warn('Failed to download cover image:', e.message);
+              }
+          }
+
+          // Get chapters
           const { data: chapters } = await axios.get(jsonUrl);
-          const story = chapters.map(c => {
-            let raw = c.content.replace(/\\n/g, '\n')
-                               .replace(/\n{2,}/g, '\n\n');
-            const paragraphs = raw.split(/\n{2,}/)
-                                  .map(p => `<p>${p.trim()}</p>`)
-                                  .join('\n');
+          const story = chapters.map(c => ({
+              title: c.title,
+              data: c.content.replace(/\\n/g, '\n')
+                            .replace(/\n{2,}/g, '\n\n')
+                            .split(/\n{2,}/)
+                            .map(p => `<p>${p.trim()}</p>`)
+                            .join('\n')
+          }));
 
-
-            return { title: c.title, data: paragraphs };
-          });
-
-            
-          /* ---- final content array ---- */
-      
-            const options = {
-                   title: novelInfo.title,
-                  author: novelInfo.author,
+          // EPUB options
+          const options = {
+              title: novelInfo.title,
+              author: novelInfo.author,
               description: novelInfo.description,
-                cover: novelInfo.cover,
-              content: [ // Define `content` directly inside `options`
-                {
-               title: 'Cover',
-              data: getCoverXhtmlContent(),
-             beforeToc: true,
-             filename: 'cover.xhtml'
-               },
-              {
-             title: 'Information',
-                data: `
-               <h1>${novelInfo.title}</h1>
-                <p><strong>Author:</strong> ${novelInfo.author}</p>
-                 <p><strong>Status:</strong> ${novelInfo.status}</p>
-                 ${novelInfo.genres.length ? `<p><strong>Genres:</strong> ${novelInfo.genres.join(', ')}</p>` : ''}
-                <h3>Description</h3>
-                 ${novelInfo.description}
-                `,
-              beforeToc: true,
-               filename: 'titlepage.xhtml'
+              publisher: "GitHub Actions",
+              content: [
+                  {
+                      title: 'Cover',
+                      data: coverImage ? `
+                      <!DOCTYPE html>
+                      <html xmlns="http://www.w3.org/1999/xhtml">
+                          <head>
+                              <title>Cover</title>
+                              <style>
+                                  body { margin: 0; padding: 0; text-align: center; }
+                                  img { height: 100vh; width: auto; max-width: 100%; }
+                              </style>
+                          </head>
+                          <body>
+                              <img src="cover.${coverImage.extension}" alt="Book Cover"/>
+                          </body>
+                      </html>` : `<h1>${novelInfo.title}</h1><h2>by ${novelInfo.author}</h2>`,
+                      beforeToc: true,
+                      filename: 'cover.xhtml'
                   },
-              ...story // Spread the `story` array
-                 ]
-                   };
-          
+                  {
+                      title: 'Information',
+                      data: `
+                      <h1>${novelInfo.title}</h1>
+                      <h2>by ${novelInfo.author}</h2>
+                      <p><strong>Status:</strong> ${novelInfo.status}</p>
+                      ${novelInfo.genres.length ? `<p><strong>Genres:</strong> ${novelInfo.genres.join(', ')}</p>` : ''}
+                      <h3>Description</h3>
+                      <p>${novelInfo.description}</p>
+                      `,
+                      beforeToc: true,
+                      filename: 'info.xhtml'
+                  },
+                  ...story
+              ],
+              assets: coverImage ? [{
+                  name: `cover.${coverImage.extension}`,
+                  data: Buffer.from(coverImage.data),
+                  type: coverImage.contentType
+              }] : []
+          };
+
           await new Epub(options, outputFile).promise;
           console.log(`✅ Created ${outputFile}`);
           JS
         env:
-          JSON_URL:        ${{ github.event.inputs.json_url }}
+          JSON_URL: ${{ github.event.inputs.json_url }}
           OUTPUT_FILENAME: ${{ github.event.inputs.output_filename }}
-          BOOK_COVER_URL:  ${{ github.event.inputs.cover_url }}
-          BOOK_TITLE:      ${{ github.event.inputs.title }}
-          BOOK_AUTHOR:     ${{ github.event.inputs.author }}
-          BOOK_DESC:       ${{ github.event.inputs.description }}
-          BOOK_STATUS:     ${{ github.event.inputs.status || 'Unknown' }}
-          BOOK_GENRES:     ${{ github.event.inputs.genres || '' }}
+          COVER_URL: ${{ github.event.inputs.cover_url }}
+          BOOK_TITLE: ${{ github.event.inputs.title }}
+          BOOK_AUTHOR: ${{ github.event.inputs.author }}
+          BOOK_DESC: ${{ github.event.inputs.description }}
+          BOOK_STATUS: ${{ github.event.inputs.status || 'Unknown' }}
+          BOOK_GENRES: ${{ github.event.inputs.genres || '' }}
+
       - name: Commit and push results
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add results
-          git commit -m "Add generated" || echo "No changes to commit"
+          git commit -m "Add generated EPUB: ${{ github.event.inputs.output_filename || 'book' }}" || echo "No changes to commit"
           git push
