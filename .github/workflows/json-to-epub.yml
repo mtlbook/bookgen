@@ -67,7 +67,12 @@ jobs:
 
           const jsonUrl    = process.env.JSON_URL;
           const coverFile  = 'cover.jpg';
-          const safeName   = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
+           const safeName = process.env.OUTPUT_FILENAME
+           .replace(/\s+/g, '-')             
+             .replace(/[^A-Za-z0-9._-]+/g, '')  
+             .replace(/^-+|-+$/g, '')         
+             .slice(0, 30);
+
           const outputFile = `results/${safeName}.epub`;
 
           const novelInfo = {
