@@ -94,7 +94,7 @@ jobs:
                   <link rel="stylesheet" type="text/css" href="css/epub.css" />
               </head>
               <body>
-               ${novelInfo.cover ? `<img src="${novelInfo.cover}" alt="Cover Image" style="height:auto;width:100%;" />` : ''}
+               ${novelInfo.cover ? `<img src="${coverFile}" alt="Cover Image" style="height:auto;width:100%;" />` : ''}
               <h1>${novelInfo.title}</h1>
                <h2>by ${novelInfo.author}</h2>
                 </body>
