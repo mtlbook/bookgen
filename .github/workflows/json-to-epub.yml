@@ -60,7 +60,8 @@ jobs:
 
           const jsonUrl    = process.env.JSON_URL;
           const coverFile  = 'cover.jpg';
-          const outputFile = `results/${process.env.OUTPUT_FILENAME}.epub`;
+          const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
+          const outputFile = `results/${safeName}.epub`;
           const bookTitle  = process.env.BOOK_TITLE;
           const bookAuthor = process.env.BOOK_AUTHOR;
           const bookDesc   = process.env.BOOK_DESC;
