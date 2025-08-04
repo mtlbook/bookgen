@@ -168,6 +168,11 @@ ${manifestItems}
   <spine toc="ncx">
 ${spineItemrefs}
   </spine>
+  ${coverXhtml ? `
+  <guide>
+    <reference type="cover" title="Cover" href="${coverXhtml}"/>
+  </guide>
+  ` : ''}
 </package>`;
 OEBPS.file('content.opf', opf);
 
