@@ -14,16 +14,10 @@ import path    from 'path';
 function html(title, body) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
+<html xmlns="http://www.w3.org/1999/xhtml XHTML namespace XHTML namespace  ">
 <head>
-  <title>${xmlEscape(title)}</title>
+  <title>${title}</title>
   <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <style type="text/css">
-    body { margin: 5% auto; max-width: 40em; line-height: 1.6; font-size: 1.1em; }
-    h1 { text-align: center; margin-bottom: 2em; }
-    p { text-align: justify; hyphens: auto; }
-  </style>
 </head>
 <body>
 ${body}
@@ -31,22 +25,17 @@ ${body}
 </html>`;
 }
 
-// ---------- fetch data ----------
-let chapters = [];
-try {
-  const response = await axios.get(process.env.JSON_URL);
-  chapters = response.data;
-  
-  if (!Array.isArray(chapters)) {
-    throw new Error('Fetched data is not an array');
-  }
-} catch (error) {
-  console.error('Error fetching chapters:', error.message);
-  process.exit(1);
+function xmlEscape(str) {
+  return str.replace(/[<>&'"]/g, c =>
+    ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
 }
 
+// ---------- fetch data ----------
+const { data: chapters } = await axios.get(process.env.JSON_URL);
+
 // ---------- prepare content ----------
-const mapped = chapters.map((c, idx) => {  // Only declare this once
+const mapped = chapters.map((c, idx) => {
+  // same cleaning logic you already had
   let raw = c.content.replace(/\\n/g, '\n')
                      .replace(/\n{2,}/g, '\n\n');
   const paragraphs = raw
@@ -56,32 +45,8 @@ const mapped = chapters.map((c, idx) => {  // Only declare this once
 
   const id   = `c${idx + 1}`;
   const file = `${id}.xhtml`;
-  return { 
-    title: c.title, 
-    body: `<h1>${xmlEscape(c.title)}</h1>\n${paragraphs}`, 
-    id, 
-    file 
-  };
+  return { title: c.title, body: paragraphs, id, file };
 });
-
-// ---------- Enhanced EPUB Features ----------
-// Add table of contents (nav.xhtml)
-const toc = `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
-<head>
-  <title>Table of Contents</title>
-  <meta charset="utf-8"/>
-</head>
-<body>
-  <nav epub:type="toc">
-    <h1>Table of Contents</h1>
-    <ol>
-      ${mapped.map(ch => `<li><a href="${ch.file}">${xmlEscape(ch.title)}</a></li>`).join('\n      ')}
-    </ol>
-  </nav>
-</body>
-</html>`;
 
 // ---------- ZIP / EPUB ----------
 const zip = new JSZip();
@@ -99,41 +64,14 @@ zip.folder('META-INF').file('container.xml', `<?xml version="1.0"?>
 
 const OEBPS = zip.folder('OEBPS');
 
-// Add CSS file for consistent styling
-OEBPS.file('styles.css', `body {
-  margin: 5% auto;
-  max-width: 40em;
-  line-height: 1.6;
-  font-size: 1.1em;
-  font-family: serif;
-  color: #333;
-}
-
-h1 {
-  text-align: center;
-  margin-bottom: 2em;
-  font-size: 1.5em;
-  page-break-after: avoid;
-}
-
-p {
-  text-align: justify;
-  hyphens: auto;
-  margin: 0 0 1em 0;
-  page-break-inside: avoid;
-  widows: 2;
-  orphans: 2;
-}`);
-
 // cover
+let coverMime = null;
 if (fs.existsSync('cover.jpg')) {
+  coverMime = 'image/jpeg';
   OEBPS.file('cover.jpg', fs.readFileSync('cover.jpg'));
-  // Add cover XHTML
-  OEBPS.file('cover.xhtml', html('Cover', `
-    <section id="cover">
-      <img src="cover.jpg" alt="Cover" style="height: 100%; width: auto; max-width: 100%;"/>
-    </section>
-  `));
+} else if (fs.existsSync('cover.jpeg')) {
+  coverMime = 'image/jpeg';
+  OEBPS.file('cover.jpeg', fs.readFileSync('cover.jpeg'));
 }
 
 // chapters
@@ -141,46 +79,26 @@ mapped.forEach(ch => {
   OEBPS.file(ch.file, html(ch.title, ch.body));
 });
 
-// Add table of contents
-OEBPS.file('nav.xhtml', toc);
-
-// content.opf - Enhanced version
-const today = new Date();
+// content.opf
 const opf = `<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+<package xmlns="http://www.idpf.org/2007/opf OPF Namespace OPF Namespace  " version="3.0" xml:lang="en" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/   ">
     <dc:identifier id="uid">urn:uuid:${crypto.randomUUID()}</dc:identifier>
     <dc:title>${xmlEscape(process.env.BOOK_TITLE)}</dc:title>
-    <dc:creator id="creator">${xmlEscape(process.env.BOOK_AUTHOR)}</dc:creator>
-    <dc:language>en</dc:language>
+    <dc:creator>${xmlEscape(process.env.BOOK_AUTHOR)}</dc:creator>
     <dc:description>${xmlEscape(process.env.BOOK_DESC)}</dc:description>
-    <dc:publisher>Generated EPUB</dc:publisher>
-    <dc:date>${today.toISOString()}</dc:date>
-    <meta property="dcterms:modified">${today.toISOString()}</meta>
-    ${fs.existsSync('cover.jpg') ? `
-    <meta name="cover" content="cover-image"/>
-    <meta property="rendition:cover">cover.xhtml</meta>` : ''}
+    <dc:language>en</dc:language>
+        ${coverMime ? '<meta name="cover" content="cover"/>' : ''}
+    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta>
   </metadata>
   <manifest>
-    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
-    <item id="css" href="styles.css" media-type="text/css"/>
-    ${fs.existsSync('cover.jpg') ? `
-    <item id="cover-image" href="cover.jpg" media-type="image/jpeg" properties="cover-image"/>
-    <item id="cover" href="cover.xhtml" media-type="application/xhtml+xml"/>` : ''}
-    ${mapped.map(ch => `
-    <item id="${ch.id}" href="${ch.file}" media-type="application/xhtml+xml"/>`).join('')}
+${mapped.map(ch => `    <item id="${ch.id}" href="${ch.file}" media-type="application/xhtml+xml"/>`).join('\n')}
+${coverMime ? `    <item id="cover" href="cover.jpg" media-type="${coverMime}"/>` : ''}
   </manifest>
-  <spine toc="nav">
-    ${fs.existsSync('cover.jpg') ? '<itemref idref="cover" linear="no"/>' : ''}
-    ${mapped.map(ch => `
-    <itemref idref="${ch.id}"/>`).join('')}
+  <spine>
+${mapped.map(ch => `    <itemref idref="${ch.id}"/>`).join('\n')}
   </spine>
-  <guide>
-    ${fs.existsSync('cover.jpg') ? '<reference type="cover" title="Cover" href="cover.xhtml"/>' : ''}
-    <reference type="toc" title="Table of Contents" href="nav.xhtml"/>
-  </guide>
 </package>`;
-
 OEBPS.file('content.opf', opf);
 
 // ---------- write file ----------
