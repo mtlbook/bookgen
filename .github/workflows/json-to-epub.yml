@@ -31,16 +31,6 @@ on:
         default: "Generated from JSON via GitHub Actions"
         required: false
         type: string
-      status:
-        description: "Book status (Completed / Ongoing / etc.)"
-        default: "Unknown"
-        required: false
-        type: string
-      genres:
-        description: "Comma-separated list of genres"
-        default: ""
-        required: false
-        type: string
 
 jobs:
   build:
@@ -66,81 +56,38 @@ jobs:
           node <<'JS'
           import axios from 'axios';
           import Epub from 'epub-gen';
-          import fs   from 'fs';
+          import fs from 'fs';
 
           const jsonUrl    = process.env.JSON_URL;
           const coverFile  = 'cover.jpg';
-          const safeName   = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
+          const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
           const outputFile = `results/${safeName}.epub`;
+          const bookTitle  = process.env.BOOK_TITLE;
+          const bookAuthor = process.env.BOOK_AUTHOR;
+          const bookDesc   = process.env.BOOK_DESC;
 
-          const novelInfo = {
-              title:       process.env.BOOK_TITLE,
-              author:      process.env.BOOK_AUTHOR,
-              description: process.env.BOOK_DESC,
-              status:      process.env.BOOK_STATUS || 'Unknown',
-              genres:      (process.env.BOOK_GENRES || '').split(',').map(g => g.trim()).filter(Boolean),
-              cover:       'cover.jpg'
-          };
-
-          /* ---- helpers ---- */
-          const getCoverXhtmlContent = () =>
-          `<?xml version="1.0" encoding="UTF-8"?>
-           <!DOCTYPE html>
-           <html xmlns="http://www.w3.org/1999/xhtml"
-             xmlns:epub="http://www.idpf.org/2007/ops"
-             lang="en" xml:lang="en">
-              <head>
-                <title>${novelInfo.title}</title>
-                  <link rel="stylesheet" type="text/css" href="css/epub.css" />
-              </head>
-              <body>
-               ${novelInfo.cover ? `<img src="${coverFile}" alt="Cover Image" style="height:auto;width:100%;" />` : ''}
-              <h1>${novelInfo.title}</h1>
-               <h2>by ${novelInfo.author}</h2>
-                </body>
-            </html>`;
-
-          /* ---- fetch chapters ---- */
           const { data: chapters } = await axios.get(jsonUrl);
-          const story = chapters.map(c => {
-            let raw = c.content.replace(/\\n/g, '\n')
-                               .replace(/\n{2,}/g, '\n\n');
-            const paragraphs = raw.split(/\n{2,}/)
-                                  .map(p => `<p>${p.trim()}</p>`)
-                                  .join('\n');
+
+          const content = chapters.map(c => {
+            // 1. turn \\n ➜ \n
+            let raw = c.content.replace(/\\n/g, '\n');
+            // 2. collapse multiple newlines to one blank line
+            raw = raw.replace(/\n{2,}/g, '\n\n');
+            // 3. split by blank line, wrap each block in <p>
+            const paragraphs = raw
+              .split(/\n{2,}/)
+              .map(p => `<p>${p.trim()}</p>`)
+              .join('\n');
             return { title: c.title, data: paragraphs };
           });
 
-          /* ---- final content array ---- */
-          const content = [
-            {
-              title: 'Cover',
-              data:  getCoverXhtmlContent(),
-              beforeToc: true,
-              filename: 'cover.xhtml'
-            },
-            {
-              title: 'Information',
-              data: `
-                <h1>${novelInfo.title}</h1>
-                <p><strong>Author:</strong> ${novelInfo.author}</p>
-                <p><strong>Status:</strong> ${novelInfo.status}</p>
-                ${novelInfo.genres.length ? `<p><strong>Genres:</strong> ${novelInfo.genres.join(', ')}</p>` : ''}
-                <h3>Description</h3>
-                ${novelInfo.description}
-              `,
-              beforeToc: true,
-              filename: 'titlepage.xhtml'
-            },
-            ...story
-          ];
-
           const options = {
-            title:  novelInfo.title,
-            author: novelInfo.author,
-            description: novelInfo.description,
-            cover:  coverFile,
-            content
+            title:       bookTitle,
+            author:      bookAuthor,
+            description: bookDesc,
+            cover:       coverFile,
+            content,
+            tocTitle:    false
           };
 
           await new Epub(options, outputFile).promise;
@@ -152,8 +99,6 @@ jobs:
           BOOK_TITLE:      ${{ github.event.inputs.title }}
           BOOK_AUTHOR:     ${{ github.event.inputs.author }}
           BOOK_DESC:       ${{ github.event.inputs.description }}
-          BOOK_STATUS:     ${{ github.event.inputs.status || 'Unknown' }}
-          BOOK_GENRES:     ${{ github.event.inputs.genres || '' }}
       - name: Commit and push results
         run: |
           git config --global user.name "GitHub Actions"
