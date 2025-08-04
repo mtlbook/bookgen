@@ -58,7 +58,9 @@ jobs:
         run: npm install epub-gen axios
 
       - name: Download cover image
-        run: curl -L -o cover.jpg "${{ github.event.inputs.cover_url }}"
+        run: |
+          mkdir -p images
+          curl -L -o images/cover.jpg "${{ github.event.inputs.cover_url}}"
 
       - name: Build EPUB in results folder
         run: |
@@ -66,41 +68,48 @@ jobs:
           node <<'JS'
           import axios from 'axios';
           import Epub from 'epub-gen';
-          import fs   from 'fs';
+          import fs from 'fs/promises';
           import path from 'path';
-          import os   from 'os';
 
-          /* ---- env variables ---- */
-          const jsonUrl    = process.env.JSON_URL;
-          const safeName   = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
+          const jsonUrl = process.env.JSON_URL;
+          const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
           const outputFile = `results/${safeName}.epub`;
 
+          // Read cover image as base64
+          let coverBase64 = '';
+          try {
+            const coverPath = path.join(process.cwd(), 'images', 'cover.jpg');
+            const coverData = await fs.readFile(coverPath);
+            coverBase64 = coverData.toString('base64');
+          } catch (err) {
+            console.warn('⚠️ Could not read cover image:', err.message);
+          }
+
           const novelInfo = {
-              title:       process.env.BOOK_TITLE,
-              author:      process.env.BOOK_AUTHOR,
-              description: process.env.BOOK_DESC,
-              status:      process.env.BOOK_STATUS || 'Unknown',
-              genres:      (process.env.BOOK_GENRES || '').split(',').map(g => g.trim()).filter(Boolean),
-              cover: './cover.jpg'
+            title: process.env.BOOK_TITLE,
+            author: process.env.BOOK_AUTHOR,
+            description: process.env.BOOK_DESC,
+            status: process.env.BOOK_STATUS || 'Unknown',
+            genres: (process.env.BOOK_GENRES || '').split(',').map(g => g.trim()).filter(Boolean),
+            cover: coverBase64 ? `data:image/jpeg;base64,${coverBase64}` : null
           };
 
-          /* ---- helpers ---- */
           const getCoverXhtmlContent = () =>
           `<?xml version="1.0" encoding="UTF-8"?>
            <!DOCTYPE html>
            <html xmlns="http://www.w3.org/1999/xhtml"
-                 xmlns:epub="http://www.idpf.org/2007/ops"
-                 lang="en" xml:lang="en">
-             <head>
-               <title>${novelInfo.title}</title>
-               <link rel="stylesheet" type="text/css" href="css/epub.css" />
-             </head>
-             <body>
-               ${novelInfo.cover ? `<img src="${novelInfo.cover}" alt="Cover Image" style="height:auto;width:100%;" />` : ''}
-               <h1>${novelInfo.title}</h1>
-               <h2>by ${novelInfo.author}</h2>
-             </body>
-           </html>`;
+             xmlns:epub="http://www.idpf.org/2007/ops"
+             lang="en" xml:lang="en">
+              <head>
+                <title>${novelInfo.title}</title>
+                <link rel="stylesheet" type="text/css" href="css/epub.css"/>
+              </head>
+              <body>
+                ${novelInfo.cover ? `<img src="cover.jpg" alt="Cover Image" style="height:100%; max-width:100%;"/>` : ''}
+                <h1>${novelInfo.title}</h1>
+                <h2>by ${novelInfo.author}</h2>
+              </body>
+            </html>`;
 
           /* ---- fetch chapters ---- */
           const { data: chapters } = await axios.get(jsonUrl);
@@ -113,16 +122,11 @@ jobs:
             return { title: c.title, data: paragraphs };
           });
 
-          /* ---- copy cover into temp dir so epub-gen finds it ---- */
-          const tempDir = path.join(os.tmpdir(), 'epub-gen');
-          await fs.promises.mkdir(tempDir, { recursive: true });
-          await fs.promises.copyFile('cover.jpg', path.join(tempDir, 'cover.jpg'));
-
           /* ---- final content array ---- */
           const content = [
             {
               title: 'Cover',
-              data:  getCoverXhtmlContent(),
+              data: getCoverXhtmlContent(),
               beforeToc: true,
               filename: 'cover.xhtml'
             },
@@ -143,25 +147,30 @@ jobs:
           ];
 
           const options = {
-            title:       novelInfo.title,
-            author:      novelInfo.author,
+            title: novelInfo.title,
+            author: novelInfo.author,
             description: novelInfo.description,
-            cover:       'cover.jpg',
-            coverPath:   'OEBPS/cover.jpg',
-            content
+            cover: novelInfo.cover,
+            content: content,
+            verbose: true
           };
 
-          await new Epub(options, outputFile).promise;
-          console.log(`✅ Created ${outputFile}`);
+          try {
+            await new Epub(options, outputFile).promise;
+            console.log(`✅ Created ${outputFile}`);
+          } catch (err) {
+            console.error('❌ EPUB generation failed:', err);
+            process.exit(1);
+          }
           JS
         env:
-          JSON_URL:        ${{ github.event.inputs.json_url }}
+          JSON_URL: ${{ github.event.inputs.json_url }}
           OUTPUT_FILENAME: ${{ github.event.inputs.output_filename }}
-          BOOK_TITLE:      ${{ github.event.inputs.title }}
-          BOOK_AUTHOR:     ${{ github.event.inputs.author }}
-          BOOK_DESC:       ${{ github.event.inputs.description }}
-          BOOK_STATUS:     ${{ github.event.inputs.status || 'Unknown' }}
-          BOOK_GENRES:     ${{ github.event.inputs.genres || '' }}
+          BOOK_TITLE: ${{ github.event.inputs.title }}
+          BOOK_AUTHOR: ${{ github.event.inputs.author }}
+          BOOK_DESC: ${{ github.event.inputs.description }}
+          BOOK_STATUS: ${{ github.event.inputs.status || 'Unknown' }}
+          BOOK_GENRES: ${{ github.event.inputs.genres || '' }}
 
       - name: Commit and push results
         run: |
