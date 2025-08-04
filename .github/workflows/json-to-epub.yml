@@ -45,60 +45,19 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install epub-gen axios
+        run: npm install axios jszip
 
       - name: Download cover image
         run: curl -L -o cover.jpg "${{ github.event.inputs.cover_url }}"
 
       - name: Build EPUB in results folder
-        run: |
-          mkdir -p results
-          node <<'JS'
-          import axios from 'axios';
-          import Epub from 'epub-gen';
-          import fs from 'fs';
-
-          const jsonUrl    = process.env.JSON_URL;
-          const coverFile  = 'cover.jpg';
-          const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
-          const outputFile = `results/${safeName}.epub`;
-          const bookTitle  = process.env.BOOK_TITLE;
-          const bookAuthor = process.env.BOOK_AUTHOR;
-          const bookDesc   = process.env.BOOK_DESC;
-
-          const { data: chapters } = await axios.get(jsonUrl);
-
-          const content = chapters.map(c => {
-            // 1. turn \\n ➜ \n
-            let raw = c.content.replace(/\\n/g, '\n');
-            // 2. collapse multiple newlines to one blank line
-            raw = raw.replace(/\n{2,}/g, '\n\n');
-            // 3. split by blank line, wrap each block in <p>
-            const paragraphs = raw
-              .split(/\n{2,}/)
-              .map(p => `<p>${p.trim()}</p>`)
-              .join('\n');
-            return { title: c.title, data: paragraphs };
-          });
-
-          const options = {
-            title:       bookTitle,
-            author:      bookAuthor,
-            description: bookDesc,
-            cover:       coverFile,
-            content,
-            tocTitle:    null
-          };
-
-          await new Epub(options, outputFile).promise;
-          console.log(`✅ Created ${outputFile}`);
-          JS
+        run: node generate-epub.mjs
         env:
-          JSON_URL:        ${{ github.event.inputs.json_url }}
-          OUTPUT_FILENAME: ${{ github.event.inputs.output_filename }}
-          BOOK_TITLE:      ${{ github.event.inputs.title }}
-          BOOK_AUTHOR:     ${{ github.event.inputs.author }}
-          BOOK_DESC:       ${{ github.event.inputs.description }}
+              JSON_URL:        ${{ github.event.inputs.json_url }}
+              OUTPUT_FILENAME: ${{ github.event.inputs.output_filename }}
+              BOOK_TITLE:      ${{ github.event.inputs.title }}
+              BOOK_AUTHOR:     ${{ github.event.inputs.author }}
+              BOOK_DESC:       ${{ github.event.inputs.description }}
       - name: Commit and push results
         run: |
           git config --global user.name "GitHub Actions"
