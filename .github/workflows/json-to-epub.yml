@@ -82,10 +82,28 @@ jobs:
               description: process.env.BOOK_DESC,
               status:      process.env.BOOK_STATUS || 'Unknown',
               genres:      (process.env.BOOK_GENRES || '').split(',').map(g => g.trim()).filter(Boolean),
-              cover:       'cover.jpg'
+              cover:       'coverFile'
           };
 
-
+              /* ---- helpers ---- */
+          
+           const getCoverXhtmlContent = () =>
+          `<?xml version="1.0" encoding="UTF-8"?>
+           <!DOCTYPE html>
+           <html xmlns="http://www.w3.org/1999/xhtml"
+             xmlns:epub="http://www.idpf.org/2007/ops"
+             lang="en" xml:lang="en">
+              <head>
+                <title>${novelInfo.title}</title>
+                  <link rel="stylesheet" type="text/css" href="css/epub.css" />
+              </head>
+              <body>
+               ${novelInfo.cover ? `<img src="${coverFile}" alt="Cover Image" style="height:auto;width:100%;" />` : ''}
+              <h1>${novelInfo.title}</h1>
+               <h2>by ${novelInfo.author}</h2>
+                </body>
+            </html>`;
+            
           /* ---- fetch chapters ---- */
           const { data: chapters } = await axios.get(jsonUrl);
           const story = chapters.map(c => {
@@ -130,25 +148,6 @@ jobs:
               ...story // Spread the `story` array
                  ]
                    };
-
-              /* ---- helpers ---- */
-          
-           const getCoverXhtmlContent = () =>
-          `<?xml version="1.0" encoding="UTF-8"?>
-           <!DOCTYPE html>
-           <html xmlns="http://www.w3.org/1999/xhtml"
-             xmlns:epub="http://www.idpf.org/2007/ops"
-             lang="en" xml:lang="en">
-              <head>
-                <title>${novelInfo.title}</title>
-                  <link rel="stylesheet" type="text/css" href="css/epub.css" />
-              </head>
-              <body>
-               ${novelInfo.cover ? `<img src="${coverFile}" alt="Cover Image" style="height:auto;width:100%;" />` : ''}
-              <h1>${novelInfo.title}</h1>
-               <h2>by ${novelInfo.author}</h2>
-                </body>
-            </html>`;
           
           await new Epub(options, outputFile).promise;
           console.log(`✅ Created ${outputFile}`);
