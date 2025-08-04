@@ -60,16 +60,25 @@ jobs:
 
           const jsonUrl    = process.env.JSON_URL;
           const coverFile  = 'cover.jpg';
-          const outputFile = `results/${process.env.OUTPUT_FILENAME}.epub`; // results folder
+          const outputFile = `results/${process.env.OUTPUT_FILENAME}.epub`;
           const bookTitle  = process.env.BOOK_TITLE;
           const bookAuthor = process.env.BOOK_AUTHOR;
           const bookDesc   = process.env.BOOK_DESC;
 
           const { data: chapters } = await axios.get(jsonUrl);
-          const content = chapters.map(c => ({
-            title: c.title,
-            data:  c.content
-          }));
+
+          const content = chapters.map(c => {
+            // 1. turn \\n ➜ \n
+            let raw = c.content.replace(/\\n/g, '\n');
+            // 2. collapse multiple newlines to one blank line
+            raw = raw.replace(/\n{2,}/g, '\n\n');
+            // 3. split by blank line, wrap each block in <p>
+            const paragraphs = raw
+              .split(/\n{2,}/)
+              .map(p => `<p>${p.trim()}</p>`)
+              .join('\n');
+            return { title: c.title, data: paragraphs };
+          });
 
           const options = {
             title:       bookTitle,
@@ -88,7 +97,6 @@ jobs:
           BOOK_TITLE:      ${{ github.event.inputs.title }}
           BOOK_AUTHOR:     ${{ github.event.inputs.author }}
           BOOK_DESC:       ${{ github.event.inputs.description }}
-
       - name: Commit and push results
         run: |
           git config --global user.name "GitHub Actions"
