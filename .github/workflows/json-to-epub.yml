@@ -64,19 +64,30 @@ jobs:
           import axios from 'axios';
           import Epub from 'epub-gen';
           import { Buffer } from 'buffer';
+          import fs from 'fs';
+          import path from 'path';
 
           const jsonUrl = process.env.JSON_URL;
           const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
           const outputFile = `results/${safeName}.epub`;
 
-          // Download helper
+          // Improved download helper with error handling
           const downloadImage = async (url) => {
-              const response = await axios.get(url, { responseType: 'arraybuffer' });
-              return {
-                  data: response.data,
-                  contentType: response.headers['content-type'],
-                  extension: response.headers['content-type'].split('/')[1]
-              };
+              try {
+                  const response = await axios.get(url, { responseType: 'arraybuffer' });
+                  const extension = url.split('.').pop().split('?')[0].toLowerCase();
+                  const validExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+                  const fileExt = validExtensions.includes(extension) ? extension : 'jpg';
+                  
+                  return {
+                      data: response.data,
+                      contentType: response.headers['content-type'] || `image/${fileExt}`,
+                      extension: fileExt
+                  };
+              } catch (error) {
+                  console.error('Error downloading cover image:', error.message);
+                  return null;
+              }
           };
 
           // Process inputs
@@ -91,10 +102,9 @@ jobs:
           // Download cover if exists
           let coverImage = null;
           if (process.env.COVER_URL) {
-              try {
-                  coverImage = await downloadImage(process.env.COVER_URL);
-              } catch (e) {
-                  console.warn('Failed to download cover image:', e.message);
+              coverImage = await downloadImage(process.env.COVER_URL);
+              if (!coverImage) {
+                  console.warn('Proceeding without cover image');
               }
           }
 
@@ -124,14 +134,44 @@ jobs:
                           <head>
                               <title>Cover</title>
                               <style>
-                                  body { margin: 0; padding: 0; text-align: center; }
-                                  img { height: 100vh; width: auto; max-width: 100%; }
+                                  body { 
+                                      margin: 0; 
+                                      padding: 0; 
+                                      text-align: center; 
+                                      height: 100vh;
+                                      display: flex;
+                                      flex-direction: column;
+                                      justify-content: center;
+                                  }
+                                  img { 
+                                      max-height: 100%; 
+                                      max-width: 100%; 
+                                      object-fit: contain;
+                                      margin: 0 auto;
+                                  }
                               </style>
                           </head>
                           <body>
-                              <img src="cover.${coverImage.extension}" alt="Book Cover"/>
+                              <img src="images/cover.${coverImage.extension}" alt="Book Cover"/>
                           </body>
-                      </html>` : `<h1>${novelInfo.title}</h1><h2>by ${novelInfo.author}</h2>`,
+                      </html>` : `
+                      <!DOCTYPE html>
+                      <html xmlns="http://www.w3.org/1999/xhtml">
+                          <head>
+                              <title>Cover</title>
+                              <style>
+                                  body { 
+                                      margin: 0; 
+                                      padding: 2em; 
+                                      text-align: center;
+                                  }
+                              </style>
+                          </head>
+                          <body>
+                              <h1>${novelInfo.title}</h1>
+                              <h2>by ${novelInfo.author}</h2>
+                          </body>
+                      </html>`,
                       beforeToc: true,
                       filename: 'cover.xhtml'
                   },
@@ -151,14 +191,19 @@ jobs:
                   ...story
               ],
               assets: coverImage ? [{
-                  name: `cover.${coverImage.extension}`,
+                  name: `images/cover.${coverImage.extension}`,
                   data: Buffer.from(coverImage.data),
                   type: coverImage.contentType
               }] : []
           };
 
-          await new Epub(options, outputFile).promise;
-          console.log(`✅ Created ${outputFile}`);
+          try {
+              await new Epub(options, outputFile).promise;
+              console.log(`✅ Successfully created ${outputFile}`);
+          } catch (error) {
+              console.error('Error generating EPUB:', error);
+              process.exit(1);
+          }
           JS
         env:
           JSON_URL: ${{ github.event.inputs.json_url }}
