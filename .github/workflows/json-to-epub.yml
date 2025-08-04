@@ -87,7 +87,7 @@ jobs:
             description: bookDesc,
             cover:       coverFile,
             content,
-            tocTitle:    false
+            tocTitle:    null
           };
 
           await new Epub(options, outputFile).promise;
