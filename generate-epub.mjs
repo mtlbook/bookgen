@@ -87,7 +87,7 @@ const opf = `<?xml version="1.0" encoding="utf-8"?>
   </metadata>
   <manifest>
 ${mapped.map(ch => `    <item id="${ch.id}" href="${ch.file}" media-type="application/xhtml+xml"/>`).join('\n')}
-${fs.existsSync('cover.jpg') ? '    <item id="cover" href="cover.jpg" media-type="image/jpeg"/>' : ''}
+${fs.existsSync('cover.jpeg') ? '    <item id="cover" href="cover.jpeg" media-type="image/jpeg"/>' : ''}
   </manifest>
   <spine>
 ${mapped.map(ch => `    <itemref idref="${ch.id}"/>`).join('\n')}
