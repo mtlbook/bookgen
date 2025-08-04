@@ -50,9 +50,9 @@ jobs:
       - name: Download cover image
         run: curl -L -o cover.jpg "${{ github.event.inputs.cover_url }}"
 
-      - name: Build EPUB
+      - name: Build EPUB in results folder
         run: |
-          mkdir -p epub
+          mkdir -p results
           node <<'JS'
           import axios from 'axios';
           import Epub from 'epub-gen';
@@ -60,7 +60,7 @@ jobs:
 
           const jsonUrl    = process.env.JSON_URL;
           const coverFile  = 'cover.jpg';
-          const outputFile = `epub/${process.env.OUTPUT_FILENAME}.epub`;
+          const outputFile = `results/${process.env.OUTPUT_FILENAME}.epub`; // results folder
           const bookTitle  = process.env.BOOK_TITLE;
           const bookAuthor = process.env.BOOK_AUTHOR;
           const bookDesc   = process.env.BOOK_DESC;
@@ -89,8 +89,10 @@ jobs:
           BOOK_AUTHOR:     ${{ github.event.inputs.author }}
           BOOK_DESC:       ${{ github.event.inputs.description }}
 
-      - name: Upload EPUB artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ github.event.inputs.output_filename }}
-          path: epub/${{ github.event.inputs.output_filename }}.epub
+      - name: Commit and push results
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add results
+          git commit -m "Add generated" || echo "No changes to commit"
+          git push
