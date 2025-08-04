@@ -69,12 +69,9 @@ jobs:
           import fs   from 'fs';
 
           const jsonUrl    = process.env.JSON_URL;
-          const coverFile  = 'cover.jpg';
+          const coverFile  = `${process.cwd()}/cover.jpg`;
           const safeName   = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
           const outputFile = `results/${safeName}.epub`;
-
-
-
 
           const novelInfo = {
               title:       process.env.BOOK_TITLE,
