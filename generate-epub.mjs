@@ -14,10 +14,11 @@ import path    from 'path';
 function html(title, body) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE html>
-xmlns="http://www.w3.org/1999/xhtml"
+<html xmlns="http://www.w3.org/1999/xhtml">
 <head>
   <title>${title}</title>
   <meta charset="utf-8"/>
+  <link rel="stylesheet" type="text/css" href="styles.css"/>
 </head>
 <body>
 ${body}
@@ -30,12 +31,23 @@ function xmlEscape(str) {
     ({'<':'&lt;','>':'&gt;','&':'&amp;','\'':'&apos;','"':'&quot;'}[c]));
 }
 
+const css = `
+body {
+  margin: 0;
+  padding: 0;
+  font-family: serif;
+  line-height: 1.5;
+}
+h1, h2, h3 { font-family: sans-serif; }
+p  { margin: 0 0 1em 0; text-align: justify; }
+img { max-width: 100%; height: auto; }
+`;
+
 // ---------- fetch data ----------
 const { data: chapters } = await axios.get(process.env.JSON_URL);
 
 // ---------- prepare content ----------
 const mapped = chapters.map((c, idx) => {
-  // same cleaning logic you already had
   let raw = c.content.replace(/\\n/g, '\n')
                      .replace(/\n{2,}/g, '\n\n');
   const paragraphs = raw
@@ -64,65 +76,45 @@ zip.folder('META-INF').file('container.xml', `<?xml version="1.0"?>
 
 const OEBPS = zip.folder('OEBPS');
 
-// cover
-let coverMime = null;
-if (fs.existsSync('cover.jpg')) {
-  coverMime = 'image/jpeg';
-  OEBPS.file('cover.jpg', fs.readFileSync('cover.jpg'));
-} else if (fs.existsSync('cover.jpeg')) {
-  coverMime = 'image/jpeg';
-  OEBPS.file('cover.jpeg', fs.readFileSync('cover.jpeg'));
+// stylesheet
+OEBPS.file('styles.css', css);
+
+// cover image detection
+let coverFileName = null;
+let coverMime     = null;
+for (const ext of ['jpg', 'jpeg', 'png']) {
+  const fn = `cover.${ext}`;
+  if (fs.existsSync(fn)) {
+    coverFileName = `cover.${ext}`;
+    coverMime     = ext === 'png' ? 'image/png' : 'image/jpeg';
+    OEBPS.file(coverFileName, fs.readFileSync(fn));
+    break;
+  }
+}
+
+// cover page
+let coverXhtml = null;
+if (coverFileName) {
+  coverXhtml = 'cover.xhtml';
+  OEBPS.file(coverXhtml, html('Cover', `<img src="${coverFileName}" alt="Cover"/>`));
 }
 
 // chapters
-mapped.forEach(ch => {
-  OEBPS.file(ch.file, html(ch.title, ch.body));
-});
+mapped.forEach(ch => OEBPS.file(ch.file, html(ch.title, ch.body)));
 
-// content.opf
-const opf = `<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://www.idpf.org/2007/opf" version="3.0" xml:lang="en" unique-identifier="uid">
-  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/   ">
-    <dc:identifier id="uid">urn:uuid:${crypto.randomUUID()}</dc:identifier>
-    <dc:title>${xmlEscape(process.env.BOOK_TITLE)}</dc:title>
-    <dc:creator>${xmlEscape(process.env.BOOK_AUTHOR)}</dc:creator>
-    <dc:description>${xmlEscape(process.env.BOOK_DESC)}</dc:description>
-    <dc:language>en</dc:language>
-${coverMime ? '<meta name="cover" content="cover-img"/>' : ''}
-<meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta>
-  </metadata>
-  <manifest>
-${coverMime ? `<item id="cover-img" href="cover.jpg" media-type="${coverMime}" properties="cover-image"/>` : ''}
-${mapped.map(ch => `    <item id="${ch.id}" href="${ch.file}" media-type="application/xhtml+xml"/>`).join('\n')}
- <item id="toc"  href="toc.xhtml"  media-type="application/xhtml+xml" properties="nav"/>
- <item id="ncx"  href="toc.ncx"    media-type="application/x-dtbncx+xml"/>
-  </manifest>
-  <spine toc="ncx">
-${mapped.map(ch => `    <itemref idref="${ch.id}"/>`).join('\n')}
-  </spine>
-</package>`;
-OEBPS.file('content.opf', opf);
-// Navigation Document (OEBPS/toc.xhtml)
+// toc.xhtml
 function navToc(chapters) {
-  const lis = chapters.map((c, idx) =>
+  const lis = chapters.map(c =>
     `<li><a href="${c.file}">${xmlEscape(c.title)}</a></li>`).join('\n');
-
-  return `<?xml version="1.0" encoding="utf-8"?>
-<!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops">
-<head>
-  <title>Table of Contents</title>
-</head>
-<body>
-  <nav epub:type="toc" id="toc">
-    <h1>Table of Contents</h1>
-    <ol>${lis}</ol>
-  </nav>
-</body>
-</html>`;
+  return html('Table of Contents', `
+<nav epub:type="toc" id="toc">
+  <h1>Table of Contents</h1>
+  <ol>${lis}</ol>
+</nav>`);
 }
 OEBPS.file('toc.xhtml', navToc(mapped));
-// legacy noc
+
+// toc.ncx
 function ncxToc(chapters) {
   const navPoints = chapters.map((c, idx) => `
   <navPoint id="np-${c.id}" playOrder="${idx + 1}">
@@ -144,6 +136,40 @@ function ncxToc(chapters) {
 }
 OEBPS.file('toc.ncx', ncxToc(mapped));
 
+// ---------- content.opf ----------
+const manifestItems = [
+  ...(coverFileName ? [`    <item id="cover-img" href="${coverFileName}" media-type="${coverMime}" properties="cover-image"/>`] : []),
+  ...(coverXhtml    ? [`    <item id="cover"     href="${coverXhtml}"    media-type="application/xhtml+xml"/>`] : []),
+  `    <item id="styles" href="styles.css"       media-type="text/css"/>`,
+  ...mapped.map(ch => `    <item id="${ch.id}" href="${ch.file}" media-type="application/xhtml+xml"/>`),
+  `    <item id="toc"    href="toc.xhtml"        media-type="application/xhtml+xml" properties="nav"/>`,
+  `    <item id="ncx"    href="toc.ncx"          media-type="application/x-dtbncx+xml"/>`
+].join('\n');
+
+const spineItemrefs = [
+  ...(coverXhtml ? [`    <itemref idref="cover"/>`] : []),
+  ...mapped.map(ch => `    <itemref idref="${ch.id}"/>`)
+].join('\n');
+
+const opf = `<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" xml:lang="en" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">urn:uuid:${crypto.randomUUID()}</dc:identifier>
+    <dc:title>${xmlEscape(process.env.BOOK_TITLE)}</dc:title>
+    <dc:creator>${xmlEscape(process.env.BOOK_AUTHOR)}</dc:creator>
+    <dc:description>${xmlEscape(process.env.BOOK_DESC)}</dc:description>
+    <dc:language>en</dc:language>
+    ${coverFileName ? '<meta name="cover" content="cover-img"/>' : ''}
+    <meta property="dcterms:modified">${new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')}</meta>
+  </metadata>
+  <manifest>
+${manifestItems}
+  </manifest>
+  <spine toc="ncx">
+${spineItemrefs}
+  </spine>
+</package>`;
+OEBPS.file('content.opf', opf);
 
 // ---------- write file ----------
 const safeName = process.env.OUTPUT_FILENAME.replace(/\s+/g, '-');
