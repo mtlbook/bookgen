@@ -81,7 +81,7 @@ jobs:
               description: process.env.BOOK_DESC,
               status:      process.env.BOOK_STATUS || 'Unknown',
               genres:      (process.env.BOOK_GENRES || '').split(',').map(g => g.trim()).filter(Boolean),
-              cover:       'cover.jpg'
+              cover: './cover.jpg'
           };
 
           /* ---- helpers ---- */
