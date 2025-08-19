@@ -109,13 +109,24 @@ jobs:
 
           /* ---- fetch chapters ---- */
           const { data: chapters } = await axios.get(jsonUrl);
-          const story = chapters.map(c => {
+          const story = chapters.map((c, index) => {
             let raw = c.content.replace(/\\n/g, '\n')
                                .replace(/\n{2,}/g, '\n\n');
             const paragraphs = raw.split(/\n{2,}/)
                                   .map(p => `<p>${p.trim()}</p>`)
                                   .join('\n');
-            return { title: c.title, data: paragraphs };
+            
+            // Truncate chapter title for filename safety (max 50 chars)
+            const safeChapterTitle = c.title
+              .replace(/[^A-Za-z0-9\s]/g, '')  // Remove special characters
+              .replace(/\s+/g, '-')             // Replace spaces with hyphens
+              .slice(0, 50);                   // Limit to 50 characters
+            
+            return { 
+              title: c.title, 
+              data: paragraphs,
+              filename: `chapter-${index + 1}-${safeChapterTitle}.xhtml`
+            };
           });
 
           /* ---- final content array ---- */
