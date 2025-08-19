@@ -67,16 +67,21 @@ jobs:
 
           const jsonUrl    = process.env.JSON_URL;
           const coverFile  = 'cover.jpg';
-           const safeName = process.env.OUTPUT_FILENAME
-           .replace(/\s+/g, '-')             
-             .replace(/[^A-Za-z0-9._-]+/g, '')  
-             .replace(/^-+|-+$/g, '')         
-             .slice(0, 30);
+          
+          // Limit output filename to 30 characters
+          const safeName = process.env.OUTPUT_FILENAME
+            .replace(/\s+/g, '-')             
+            .replace(/[^A-Za-z0-9._-]+/g, '')  
+            .replace(/^-+|-+$/g, '')         
+            .slice(0, 30);
 
           const outputFile = `results/${safeName}.epub`;
 
+          // Limit book title to 30 characters for metadata
+          const limitedTitle = process.env.BOOK_TITLE.slice(0, 30);
+
           const novelInfo = {
-              title:       process.env.BOOK_TITLE,
+              title:       limitedTitle,
               author:      process.env.BOOK_AUTHOR,
               description: process.env.BOOK_DESC,
               status:      process.env.BOOK_STATUS || 'Unknown',
@@ -162,5 +167,5 @@ jobs:
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
           git add results
-          git commit -m "Add generated" || echo "No changes to commit"
+          git commit -m "Add generated EPUB" || echo "No changes to commit"
           git push
